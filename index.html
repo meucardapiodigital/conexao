@@ -430,8 +430,8 @@ const PADRAO = {
     ["Pastel","Pastel Mistão","10,00"],["Pastel","Pastel Frango c/ Catupiry","10,00"],["Pastel","Pastel de Pizza","12,00"],["Pastel","Pastel Banana Mix","12,00"],
     ["Porção de Batata","Batata P (pequena)","10,00"],["Porção de Batata","Batata M (média)","15,00"],
     ["Porção de Batata","Batata G (grande)","20,00"],["Porção de Batata","Batata c/ Calabresa","25,00"],
-    ["Bebidas","Regente 1 L","5,00"],["Bebidas","Magistral 1 L","5,00"],["Bebidas","Fanta Lata","6,00"],
-    ["Bebidas","Baré Lata","6,00"],["Bebidas","Fanta 1 L","11,00"]
+    ["Bebidas","Regente 1 L","6,00"],["Bebidas","Magistral 1 L","6,00"],["Bebidas","Baré Lata","5,00"],
+    ["Bebidas","Fanta Lata","6,00"],["Bebidas","Coca-Cola Lata","6,00"],["Bebidas","Fanta 1 L","11,00"],["Bebidas","Coca-Cola 1 L","12,00"]
   ].map(([categoria,item,preco,descricao="",emoji=""])=>({categoria,item,preco,descricao,preco_promo:"",disponivel:"SIM",foto:/^Combo \d$/.test(item)?"combo"+item.slice(-1):"",emoji})),
   promocoes:[
     {titulo:"3 X Salada",descricao:"Promoção de X Salada",preco:"25,00",ativa:"SIM"},
