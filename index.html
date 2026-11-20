@@ -230,6 +230,29 @@ select.inp{appearance:none;background-image:linear-gradient(45deg,transparent 50
 .sum .tot span:last-child{font-family:Bangers;color:var(--yellow);font-size:32px;font-weight:400}
 .send{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#22a855;color:#fff;font-weight:900;font-size:17px;padding:16px;border-radius:16px;box-shadow:0 5px 0 #157a3b}
 .send:active{transform:translateY(3px);box-shadow:0 2px 0 #157a3b}
+.send{background:var(--grad);color:#3a0d00;box-shadow:0 5px 0 #a33b00}.send:disabled{opacity:.6}
+#trkBtn{position:fixed;left:50%;bottom:92px;z-index:39;transform:translate(-50%,300%);display:flex;align-items:center;gap:10px;padding:11px 18px;border-radius:999px;background:#1a0d0a;color:var(--yellow);font-weight:800;font-size:14px;border:2px solid var(--yellow);box-shadow:0 10px 24px rgba(0,0,0,.55);transition:transform .4s cubic-bezier(.2,1.3,.4,1);max-width:94vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;font-family:inherit}
+#trkBtn.show{transform:translate(-50%,0)}
+#trkBtn .dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--yellow);animation:trkp 1.6s infinite}
+#trkBtn.ok .dot{background:#4ade80}
+@keyframes trkp{0%{box-shadow:0 0 0 0 rgba(255,210,31,.7)}70%{box-shadow:0 0 0 10px rgba(255,210,31,0)}100%{box-shadow:0 0 0 0 rgba(255,210,31,0)}}
+.trkh{display:flex;align-items:center;gap:14px;margin-top:6px;padding:16px;border-radius:18px;background:linear-gradient(135deg,#3a0a08,#7a120f);color:var(--cream);box-shadow:inset 0 0 0 2px var(--yellow)}
+.trkh .ic{font-size:38px;animation:trkb 1.8s ease-in-out infinite}@keyframes trkb{50%{transform:translateY(-4px) scale(1.06)}}
+.trkh b{display:block;font-size:21px;font-weight:900;color:var(--yellow)}.trkh small{font-size:13.5px;color:#f3d6c6}
+.trkh.entregue{background:linear-gradient(135deg,#0e3a1f,#14532d);box-shadow:inset 0 0 0 2px #4ade80}.trkh.cancelado{background:#3a0d0d;box-shadow:inset 0 0 0 2px #f87171}
+.steps{list-style:none;margin:16px 0 4px;padding:0}
+.steps li{position:relative;display:flex;gap:12px;padding-bottom:16px;color:#8a6a5a}
+.steps li:not(:last-child):before{content:"";position:absolute;left:17px;top:36px;bottom:0;width:3px;border-radius:3px;background:#3a1a12}
+.steps li.done:before{background:#22a34a}
+.steps .b{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#24110c;border:2px solid #3a1a12;font-size:16px}
+.steps li.done .b{background:#22a34a;border-color:#22a34a;color:#fff;font-weight:900}
+.steps li.cur .b{background:var(--yellow);border-color:var(--orange);animation:trkp 1.6s infinite}
+.steps li.cur,.steps li.done{color:var(--cream)}
+.steps .tx b{display:block;font-size:15px;margin-top:2px}.steps .tx small{font-size:12px;color:var(--muted)}
+.trkr{margin:12px 0;padding:14px;border-radius:16px;background:#1a0d0a;border:1px solid var(--line);font-size:14px;color:var(--cream)}
+.trkr>b{display:block;margin-bottom:6px;color:var(--yellow)}.trkr div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.trkr .t{border-top:1px dashed var(--line);margin-top:6px;padding-top:8px;font-weight:900;font-size:16px}.trkr small{display:block;margin-top:6px;color:var(--muted)}
+.trk-zap{display:block;text-align:center;padding:13px;border-radius:14px;border:1px solid var(--line);background:#1a0d0a;color:var(--cream);font-weight:800;text-decoration:none;font-size:14.5px;cursor:pointer;font-family:inherit}
 .muted{color:var(--muted);font-size:12.5px;font-weight:600}
 
 
@@ -403,12 +426,91 @@ nav.cats{box-shadow:0 10px 24px rgba(0,0,0,.45)}
       <div id="sTaxaRow"><span>Taxa de entrega</span><span id="sTaxa">—</span></div>
       <div class="tot"><span>Total</span><span id="sTot">R$ 0,00</span></div>
     </div>
-    <p class="muted" style="text-align:center;margin-top:18px">Escolha para qual WhatsApp enviar o pedido:</p>
+    
     <div id="sendBox"></div>
-    <p class="muted" style="text-align:center;margin-top:10px">O pedido abre no WhatsApp do lanche, é só tocar em enviar.</p>
+    <p class="muted" style="text-align:center;margin-top:10px">O pedido vai direto para a cozinha e você acompanha o preparo por aqui.</p>
   </div>
 </div>
 
+<button id="trkBtn" aria-label="Acompanhar pedido"><span class="dot"></span><span id="trkBtnT">Acompanhar pedido</span></button>
+<div class="sheet-bg" id="trkBg"></div>
+<div class="sheet" id="trk" role="dialog" aria-modal="true" aria-label="Acompanhar pedido"><div class="grab"></div><div class="wrap">
+  <h2><span id="trkT">Seu pedido</span> <button class="x" id="trkX" aria-label="Fechar">✕</button></h2><div id="trkB"></div></div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+/* =====================================================================
+   BANCO DE PEDIDOS — mesmo código para o cardápio e para o painel
+   • Sem FIREBASE_CONFIG  → MODO DEMONSTRAÇÃO (pedidos ficam só neste navegador)
+   • Com FIREBASE_CONFIG  → MODO ONLINE (pedidos chegam no painel em qualquer aparelho)
+   ===================================================================== */
+const LOJA_ID = "conexaosabor";          // identificador da loja no banco (ex.: "conexaosabor")
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDEJS-Or6d5r_jW1msG9C1PUXRvMVGOKG8",
+  authDomain: "meucardapiodigital-ce935.firebaseapp.com",
+  projectId: "meucardapiodigital-ce935",
+  storageBucket: "meucardapiodigital-ce935.firebasestorage.app",
+  messagingSenderId: "659762312330",
+  appId: "1:659762312330:web:d195feea3b68c573822973"
+};
+
+const STATUS = {
+  recebido: { t: "Pedido recebido",     i: "📥", d: "Recebemos o seu pedido." },
+  preparo:  { t: "Em preparo",          i: "👨‍🍳", d: "Já estamos preparando." },
+  pronto:   { t: "Pedido pronto",       i: "✅", d: "Seu pedido está pronto." },
+  saiu:     { t: "Saiu para entrega",   i: "🛵", d: "O entregador está a caminho." },
+  entregue: { t: "Entregue",            i: "🎉", d: "Bom apetite!" },
+  cancelado:{ t: "Cancelado",           i: "❌", d: "Fale com a gente pelo WhatsApp." }
+};
+const ETAPAS = modo => modo === "entrega" ? ["recebido","preparo","pronto","saiu","entregue"] : ["recebido","preparo","pronto","entregue"];
+const hojeISO = () => new Intl.DateTimeFormat("en-CA",{timeZone:"America/Manaus"}).format(new Date());
+const novoNumero = () => String(Math.floor(1000 + Math.random()*9000));
+
+const DB = (() => {
+  /* ---------- MODO ONLINE (Firebase Firestore) ---------- */
+  if (FIREBASE_CONFIG && window.firebase) {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const fs = firebase.firestore();
+    const col = fs.collection("lojas").doc(LOJA_ID).collection("pedidos");
+    return {
+      modo: "online",
+      async criar(p) { const ref = col.doc(); await ref.set({ ...p, id: ref.id }); return ref.id; },
+      ouvir(id, cb) { return col.doc(id).onSnapshot(s => cb(s.exists ? s.data() : null), () => cb(null)); },
+      ouvirHoje(cb, erro) { return col.where("dia", "==", hojeISO()).onSnapshot(q => cb(q.docs.map(d => d.data())), erro); },
+      status(id, st) { return col.doc(id).update({ status: st, ["hist." + st]: Date.now() }); },
+      entrar(email, senha) { return firebase.auth().signInWithEmailAndPassword(email, senha); },
+      sair() { return firebase.auth().signOut(); },
+      logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); }
+    };
+  }
+  /* Firebase configurado mas a biblioteca não carregou (sem internet ou bloqueio): não finge que enviou */
+  if (FIREBASE_CONFIG) {
+    const falha = async () => { throw new Error("Firebase indisponível"); };
+    return { modo: "offline", criar: falha, status: falha, entrar: falha, sair: async () => {},
+      ouvir(id, cb) { cb(null); return () => {}; }, ouvirHoje(cb, erro) { erro && erro(); return () => {}; }, logado(cb) { cb(false); return () => {}; } };
+  }
+  /* ---------- MODO DEMONSTRAÇÃO (localStorage + abas) ---------- */
+  const K = "demo_pedidos_" + LOJA_ID, ls = window.localStorage;
+  const ler = () => { try { return JSON.parse(ls.getItem(K) || "[]"); } catch (e) { return []; } };
+  const subs = new Set(), avisa = () => subs.forEach(f => f());
+  let bc = null; try { bc = new BroadcastChannel(K); bc.onmessage = avisa; } catch (e) {}
+  addEventListener("storage", e => { if (e.key === K) avisa(); });
+  const grava = a => { try { ls.setItem(K, JSON.stringify(a.slice(-200))); } catch (e) {} bc && bc.postMessage(1); avisa(); };
+  const sub = f => { subs.add(f); f(); return () => subs.delete(f); };
+  return {
+    modo: "demo",
+    async criar(p) { const id = "d" + Date.now().toString(36); grava([...ler(), { ...p, id }]); return id; },
+    ouvir(id, cb) { return sub(() => cb(ler().find(p => p.id === id) || null)); },
+    ouvirHoje(cb) { return sub(() => cb(ler().filter(p => p.dia === hojeISO()))); },
+    async status(id, st) { grava(ler().map(p => p.id === id ? { ...p, status: st, hist: { ...p.hist, [st]: Date.now() } } : p)); },
+    async entrar(email, senha) { if (senha !== "1234") throw new Error("Senha incorreta"); ls.setItem(K + "_login", email || "demo"); },
+    async sair() { ls.removeItem(K + "_login"); },
+    logado(cb) { cb(!!ls.getItem(K + "_login"), ls.getItem(K + "_login")); return () => {}; },
+    limpar() { grava([]); }
+  };
+})();
+
+</script>
 <script>
 /* ================= CARDÁPIO PADRÃO (usado se a planilha não estiver ligada) ================= */
 const PADRAO = {
@@ -519,7 +621,7 @@ function render(d,{padrao,offline}){
   const c=d.config||{};
   const aberto=c.aberto===undefined||c.aberto===""?true:isYes(c.aberto);
   WHATS=[c.whatsapp,c.whatsapp2,c.whatsapp_2].join(",").split(/[,;\/]/).map(n=>n.replace(/\D/g,"")).filter(n=>n.length>=10).filter((n,i,a)=>a.indexOf(n)===i);
-  $("#sendBox").innerHTML=WHATS.map(n=>`<button class="send" data-wa="${n}"><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.3-.5.1-1 .1-3.3-.8-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.3-.3.6-.3.8-.3h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l2 .9c.3.1.5.2.5.3.1.2.1.7-.1 1.3z"/></svg>${fmtTel(n)}</button>`).join("");
+  $("#sendBox").innerHTML=`<button class="send" data-send="1"><span style="font-size:22px">🍔</span><span>Enviar pedido</span></button>`;
   CAN_ORDER=aberto;
   document.body.classList.toggle("natal",c.tema_natal===undefined||c.tema_natal===""?false:isYes(c.tema_natal));
   if(primeira) setupNatal();
@@ -716,7 +818,7 @@ const closeSheet=()=>{ $("#sheet").classList.remove("show"); $("#sheetBg").class
 
 function marcaErro(el){ el.classList.remove("err"); void el.offsetWidth; el.classList.add("err"); el.focus(); return false; }
 function fmtTel(n){ const d=n.startsWith("55")&&n.length>=12?n.slice(2):n; return d.length===11?`(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`:d.length===10?`(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`:n; }
-function enviar(numero){
+async function enviar(){
   if(!Object.keys(CART).length) return;
   const usandoResumo=$("#perfilForm").style.display==="none";
   const p=usandoResumo?{...PERFIL}:{nome:$("#pNome").value.trim(),tel:$("#pTel").value.trim(),bairro:$("#pBairro").value,endereco:$("#pEnd").value.trim(),ref:$("#pRef").value.trim()};
@@ -732,24 +834,49 @@ function enviar(numero){
   if(MODO==="entrega"&&txChk===null&&$("#pBairro").value==="__outro"){ $("#geoBtn").scrollIntoView({behavior:"smooth",block:"center"}); return marcaErro($("#geoBtn")); }
   if(txChk==="fora"){ alertBox("Seu endereço está fora da nossa área de entrega. Você pode escolher retirar no balcão."); return; }
   if(!PAG){ $("#pag").scrollIntoView({behavior:"smooth",block:"center"}); $$("#pag .opt").forEach(b=>marcaErro(b)); return; }
-  if(!numero){ alertBox("O número de WhatsApp do lanche ainda não foi configurado."); return; }
+  if(!CAN_ORDER){ alertBox("Estamos fechados agora. Tente novamente no horário de funcionamento."); return; }
   if(MODO!=="mesa"&&!usandoResumo&&$("#pSalvar").checked){ PERFIL={...PERFIL,...p}; const g=geoAtual(); if(g){ PERFIL.lat=g.lat; PERFIL.lng=g.lng; } if(MODO!=="entrega"){ PERFIL.bairro=PERFIL.bairro||""; } lsSet("cs_perfil",PERFIL); }
   if(MODO==="mesa"&&p.nome&&!PERFIL.nome){ PERFIL.nome=p.nome; lsSet("cs_perfil",PERFIL); }
 
   const ids=Object.keys(CART), sub=subtotal(), tx=taxaAtual();
-  const tipo=MODO==="mesa"?`🍽️ *PEDIDO NA MESA ${mesaN}*`:MODO==="entrega"?"🛵 *PEDIDO PARA ENTREGA*":"🏪 *PEDIDO PARA RETIRADA NO BALCÃO*";
-  const linhas=ids.map(k=>`• ${CART[k]}x ${ITEMS[k].nome} — ${brl(ITEMS[k].preco*CART[k])}`).join("\n");
-  let m=`${tipo}\n\n${linhas}\n\nSubtotal: ${brl(sub)}`;
-  if(MODO==="entrega") m+=`\nTaxa de entrega: ${typeof tx==="number"?brl(tx):"a combinar"}`;
-  m+=`\n*Total: ${brl(sub+(typeof tx==="number"?tx:0))}${tx==="combinar"?" + taxa":""}*`;
-  m+=`\n\n👤 ${p.nome}`; if(MODO!=="mesa") m+=`\n📱 ${p.tel}`;
-  if(MODO==="entrega"){ m+=`\n📍 ${p.endereco}${p.bairro?` — ${p.bairro==="__outro"?"(outro bairro)":p.bairro}`:""}${p.ref?`\n   Ref.: ${p.ref}`:""}`;
-    const g=geoAtual(); if(g){ m+=`\n🗺️ Localização: https://maps.google.com/?q=${g.lat},${g.lng}`; if(LOJA()) m+=`\n📏 Distância: ~${kmFmt(distKm(LOJA(),g))}`; } }
-  m+=`\n💳 Pagamento: ${PAG}`; const troco=$("#troco").value.trim(); if(PAG==="Dinheiro"&&troco) m+=` (troco para R$ ${troco})`;
-  const obs=$("#obs").value.trim(); if(obs) m+=`\n📝 Obs.: ${obs}`;
-  location.href=`https://wa.me/${numero}?text=${encodeURIComponent(m)}`;
+  const troco=$("#troco").value.trim(), obs=$("#obs").value.trim(), g=geoAtual(), agora=Date.now();
+  const ped={ loja:LOJA_ID, num:novoNumero(), dia:hojeISO(), criado:agora, status:"recebido", hist:{recebido:agora},
+    cliente:{nome:p.nome, tel:MODO==="mesa"?"":p.tel}, modo:MODO, mesa:MODO==="mesa"?mesaN:"",
+    end:MODO==="entrega"?{rua:p.endereco, num:"", bairro:p.bairro==="__outro"?"Outro bairro":p.bairro, comp:"", ref:p.ref||"", loc:g?`https://maps.google.com/?q=${g.lat},${g.lng}`:""}:null,
+    itens:ids.map(k=>({n:ITEMS[k].nome, det:[], q:CART[k], p:ITEMS[k].preco})),
+    subtotal:sub, taxa:typeof tx==="number"?tx:0, taxaCombinar:tx==="combinar", total:sub+(typeof tx==="number"?tx:0), pag:PAG, troco:PAG==="Dinheiro"?troco:"", obs };
+  const bt=$("[data-send]"); bt.disabled=true; bt.lastElementChild.textContent="Enviando…";
+  try{ const id=await DB.criar(ped); lsSet("cs_pedido",{id,num:ped.num}); CART={}; refreshSteppers(); updateCart(); closeSheet(); $("#obs").value=""; acompanhar(id,true); }
+  catch(e){ alertBox("Não foi possível enviar agora. Verifique a internet e tente de novo."); }
+  finally{ bt.disabled=false; bt.lastElementChild.textContent="Enviar pedido"; }
 }
 function alertBox(t){ const n=document.createElement("div"); n.className="notice"; n.textContent=t; $("#sendBox").before(n); setTimeout(()=>n.remove(),5000); }
+
+/* ================= Acompanhamento do pedido ================= */
+let TRK=null, TRKoff=null, ultSt=null;
+const hm=t=>t?new Date(t).toLocaleTimeString("pt-BR",{timeZone:"America/Manaus",hour:"2-digit",minute:"2-digit"}):"";
+const abreTrk=()=>{ $("#trk").classList.add("show"); $("#trkBg").classList.add("show"); }, fechaTrk=()=>{ $("#trk").classList.remove("show"); $("#trkBg").classList.remove("show"); };
+function acompanhar(id,abrir){ TRKoff&&TRKoff(); ultSt=null; TRKoff=DB.ouvir(id,p=>{ TRK=p; desenhaTrk(); if(abrir){ abrir=false; abreTrk(); } }); }
+function bipT(){ try{ const a=window._ac=window._ac||new (window.AudioContext||window.webkitAudioContext)(), t=a.currentTime; [880,1320].forEach((f,i)=>{ const o=a.createOscillator(),g=a.createGain(); o.frequency.value=f; o.connect(g); g.connect(a.destination); g.gain.setValueAtTime(.0001,t+i*.18); g.gain.exponentialRampToValueAtTime(.25,t+i*.18+.02); g.gain.exponentialRampToValueAtTime(.0001,t+i*.18+.3); o.start(t+i*.18); o.stop(t+i*.18+.32); }); }catch(e){} }
+function desenhaTrk(){ const p=TRK, bt=$("#trkBtn"); if(!p){ bt.classList.remove("show"); return; }
+  const fim=p.status==="entregue"||p.status==="cancelado", et=ETAPAS(p.modo), at=et.indexOf(p.status), st=STATUS[p.status];
+  const lab=k=>k==="pronto"?(p.modo==="mesa"?"Pronto — já vamos levar":p.modo==="balcao"?"Pronto para retirar":"Pedido pronto"):k==="entregue"?(p.modo==="mesa"?"Servido na mesa":p.modo==="balcao"?"Retirado":"Entregue"):STATUS[k].t;
+  const sub=k=>k==="pronto"?(p.modo==="mesa"?"Seu pedido já vai chegar à mesa.":p.modo==="balcao"?"Pode vir buscar no balcão.":STATUS[k].d):STATUS[k].d;
+  if(ultSt&&ultSt!==p.status){ const t=$("#toast"); t.textContent=st.i+" "+lab(p.status); t.classList.add("show"); setTimeout(()=>{ t.classList.remove("show"); t.textContent="✓ Adicionado ao pedido"; },2600); try{navigator.vibrate&&navigator.vibrate([120,60,120])}catch(e){} bipT(); }
+  ultSt=p.status;
+  bt.classList.toggle("show",!fim); bt.classList.toggle("ok",p.status!=="recebido"); $("#trkBtnT").textContent=`${st.i} Pedido #${p.num} · ${lab(p.status)}`;
+  $("#trkT").textContent=`Pedido #${p.num}`;
+  const zap=(WHATS[0]||"");
+  $("#trkB").innerHTML=`<div class="trkh ${p.status}"><span class="ic">${st.i}</span><div><b>${lab(p.status)}</b><small>${sub(p.status)}</small></div></div>
+   ${p.status==="cancelado"?"":`<ol class="steps">${et.map((k,i)=>`<li class="${i<at?"done":i===at?"cur":""}"><span class="b">${i<at?"✓":STATUS[k].i}</span><span class="tx"><b>${lab(k)}</b><small>${p.hist&&p.hist[k]?hm(p.hist[k]):i===at+1&&!fim?"aguardando…":""}</small></span></li>`).join("")}</ol>`}
+   ${!fim?`<div class="notice">⏱️ Esta tela atualiza sozinha. Pode deixar aberta.</div>`:""}
+   <div class="trkr"><b>Resumo${p.modo==="mesa"?` · Mesa ${esc(p.mesa)}`:""}</b>${p.itens.map(i=>`<div><span>${i.q}x ${esc(i.n)}</span><span>${brl(i.p*i.q)}</span></div>`).join("")}
+    ${p.taxa?`<div><span>Entrega</span><span>${brl(p.taxa)}</span></div>`:""}<div class="t"><span>Total</span><span>${brl(p.total)}${p.taxaCombinar?" + taxa":""}</span></div><small>💳 ${esc(p.pag)}${p.end?` · 🛵 ${esc(p.end.bairro)}`:p.modo==="mesa"?" · 🍽️ Mesa":" · 🏪 Balcão"}</small></div>
+   ${zap?`<a class="trk-zap" target="_blank" href="https://wa.me/${zap}?text=${encodeURIComponent(`Olá! Sobre o meu pedido #${p.num} (${p.cliente.nome}).`)}">💬 Falar com o lanche no WhatsApp</a>`:""}
+   ${fim?`<button class="trk-zap" id="trkFim" style="width:100%;margin-top:8px">Fazer um novo pedido</button>`:""}`; }
+$("#trkBtn").onclick=abreTrk; $("#trkBg").onclick=fechaTrk; $("#trkX").onclick=fechaTrk;
+document.addEventListener("click",e=>{ if(e.target.id==="trkFim"){ lsSet("cs_pedido",null); TRKoff&&TRKoff(); TRK=null; desenhaTrk(); fechaTrk(); } });
+(()=>{ const a=lsGet("cs_pedido"); if(a&&a.id) acompanhar(a.id,false); })();
 
 /* ================= Eventos ================= */
 document.addEventListener("click",e=>{
@@ -765,7 +892,7 @@ $("#modo").onclick=e=>{ const b=e.target.closest(".opt"); if(!b) return; MODO=b.
 $("#pag").onclick=e=>{ const b=e.target.closest(".opt"); if(!b) return; PAG=b.dataset.v; $$("#pag .opt").forEach(x=>x.classList.remove("err")); renderCheckout(); };
 $("#pBairro").onchange=()=>{ renderGeo(); updateCart(); };
 $("#geoBtn").onclick=pedirLocalizacao;
-$("#sendBox").onclick=e=>{ const b=e.target.closest("[data-wa]"); if(b) enviar(b.dataset.wa); };
+$("#sendBox").onclick=e=>{ const b=e.target.closest("[data-send]"); if(b&&!b.disabled) enviar(); };
 document.addEventListener("input",e=>e.target.classList?.remove("err"));
 
 
