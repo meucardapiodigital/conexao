@@ -472,6 +472,7 @@ const DB = (() => {
     firebase.initializeApp(FIREBASE_CONFIG);
     const fs = firebase.firestore();
     const col = fs.collection("lojas").doc(LOJA_ID).collection("pedidos");
+    const dispDoc = fs.collection("lojas").doc(LOJA_ID).collection("config").doc("disponibilidade");
     return {
       modo: "online",
       async criar(p) { const ref = col.doc(); await ref.set({ ...p, id: ref.id }); return ref.id; },
@@ -480,21 +481,24 @@ const DB = (() => {
       status(id, st) { return col.doc(id).update({ status: st, ["hist." + st]: Date.now() }); },
       entrar(email, senha) { return firebase.auth().signInWithEmailAndPassword(email, senha); },
       sair() { return firebase.auth().signOut(); },
-      logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); }
+      logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); },
+      ouvirOff(cb) { return dispDoc.onSnapshot(s => cb((s.exists && s.data().off) || {}), () => cb({})); },
+      salvarOff(off) { return dispDoc.set({ off, atualizado: Date.now() }); }
     };
   }
   /* Firebase configurado mas a biblioteca não carregou (sem internet ou bloqueio): não finge que enviou */
   if (FIREBASE_CONFIG) {
     const falha = async () => { throw new Error("Firebase indisponível"); };
     return { modo: "offline", criar: falha, status: falha, entrar: falha, sair: async () => {},
-      ouvir(id, cb) { cb(null); return () => {}; }, ouvirHoje(cb, erro) { erro && erro(); return () => {}; }, logado(cb) { cb(false); return () => {}; } };
+      ouvir(id, cb) { cb(null); return () => {}; }, ouvirHoje(cb, erro) { erro && erro(); return () => {}; }, logado(cb) { cb(false); return () => {}; },
+      ouvirOff(cb) { cb({}); return () => {}; }, salvarOff: falha };
   }
   /* ---------- MODO DEMONSTRAÇÃO (localStorage + abas) ---------- */
   const K = "demo_pedidos_" + LOJA_ID, ls = window.localStorage;
   const ler = () => { try { return JSON.parse(ls.getItem(K) || "[]"); } catch (e) { return []; } };
   const subs = new Set(), avisa = () => subs.forEach(f => f());
   let bc = null; try { bc = new BroadcastChannel(K); bc.onmessage = avisa; } catch (e) {}
-  addEventListener("storage", e => { if (e.key === K) avisa(); });
+  addEventListener("storage", e => { if (e.key === K || e.key === K + "_off") avisa(); });
   const grava = a => { try { ls.setItem(K, JSON.stringify(a.slice(-200))); } catch (e) {} bc && bc.postMessage(1); avisa(); };
   const sub = f => { subs.add(f); f(); return () => subs.delete(f); };
   return {
@@ -506,6 +510,8 @@ const DB = (() => {
     async entrar(email, senha) { if (senha !== "1234") throw new Error("Senha incorreta"); ls.setItem(K + "_login", email || "demo"); },
     async sair() { ls.removeItem(K + "_login"); },
     logado(cb) { cb(!!ls.getItem(K + "_login"), ls.getItem(K + "_login")); return () => {}; },
+    ouvirOff(cb) { return sub(() => { let o = {}; try { o = JSON.parse(ls.getItem(K + "_off") || "{}"); } catch (e) {} cb(o); }); },
+    async salvarOff(off) { try { ls.setItem(K + "_off", JSON.stringify(off)); } catch (e) {} bc && bc.postMessage(1); avisa(); },
     limpar() { grava([]); }
   };
 })();
@@ -615,7 +621,15 @@ async function load(first){
 
 /* ================= Render ================= */
 let lastSig="";
-function render(d,{padrao,offline}){
+/* ===== Disponibilidade do dia (controlada pelo painel) ===== */
+let OFF={}, RAWD=null, RAWO={};
+function aplicaOff(d){ if(!d) return d; const c=JSON.parse(JSON.stringify(d));
+  c.cardapio=(c.cardapio||[]).map(it=>OFF[it.categoria+"|"+it.item]?{...it,disponivel:"NÃO"}:it);
+  c.promocoes=(c.promocoes||[]).map(p=>OFF["promo:"+p.titulo]?{...p,ativa:"NÃO"}:p); return c; }
+function render(d,o){ RAWD=d; RAWO=o||{}; render0(aplicaOff(d),RAWO); }
+DB.ouvirOff(off=>{ OFF=off||{}; if(!RAWD) return; render(RAWD,{...RAWO,padrao:false});
+  Object.keys(CART).forEach(k=>{ if(OFF[k.replace(/^item:/,"")]||OFF[k]) delete CART[k]; }); refreshSteppers(); updateCart(); });
+function render0(d,{padrao,offline}){
   const sig=JSON.stringify(d); if(sig===lastSig&&!padrao) return; // nada mudou
   const primeira=!lastSig; lastSig=sig; DATA=d;
   const c=d.config||{};

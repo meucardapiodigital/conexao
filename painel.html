@@ -81,6 +81,24 @@ a.tb{color:var(--tx)}
 .fl span:last-child{color:var(--mu)}
 #somBar{display:none;margin:0 16px 10px;padding:12px 14px;border-radius:14px;background:#7a1a00;color:#fff3d6;font-weight:700;font-size:14px;align-items:center;gap:10px}
 #somBar button{margin-left:auto;padding:9px 14px;border-radius:10px;background:var(--y);color:#2a0a00;font-weight:800}
+/* itens do dia */
+.vbtn.on{background:var(--y);color:#2a0a00;border-color:var(--y)}
+#itens{display:none;padding:0 16px 40px}
+.ih{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.ih input{flex:1;min-width:200px;padding:12px 14px;border-radius:12px;border:1px solid var(--ln);background:#0e0507;color:var(--tx)}
+.ih .tb{padding:11px 14px}
+.inf{font-size:13px;color:var(--mu);margin-bottom:12px;line-height:1.5}
+.grp{margin-bottom:14px;border-radius:16px;background:rgba(29,12,15,.7);border:1px solid var(--ln);overflow:hidden}
+.grp h3{padding:12px 14px;font-size:15px;color:var(--y2);display:flex;justify-content:space-between;align-items:center}
+.grp h3 small{color:var(--mu);font-weight:600;font-size:12px}
+.ir{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--ln)}
+.ir .nm{flex:1;min-width:0}.ir .nm b{display:block;font-size:14.5px}.ir .nm small{color:var(--mu);font-size:12px}
+.ir.off .nm b{text-decoration:line-through;opacity:.6}
+.sw{flex:none;min-width:136px;padding:10px 12px;border-radius:12px;font-weight:800;font-size:13px;border:2px solid transparent}
+.sw.on{background:#14532d;color:#bbf7d0;border-color:#22c55e}.sw.off{background:#5a1418;color:#fecaca;border-color:#ef4444}
+.sw.pl{background:#2a1013;color:var(--mu);cursor:not-allowed}
+.salvo{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(120px);padding:12px 18px;border-radius:999px;background:var(--y);color:#2a0a00;font-weight:800;transition:transform .3s;z-index:50}
+.salvo.on{transform:translateX(-50%) translateY(0)}
 @media(max-width:900px){.tabs{display:flex}.cols{grid-template-columns:1fr}.col{display:none}.col.on{display:block}.top h1{font-size:17px}}
 @media print{body *{visibility:hidden}#rc,#rc *{visibility:visible}#rc{position:absolute;left:0;top:0}}
 #rc{display:none;width:72mm;font-family:monospace;font-size:12px;color:#000;background:#fff;padding:4mm}
@@ -107,6 +125,7 @@ a.tb{color:var(--tx)}
     <span class="sp"></span>
     <span class="pill" id="modoP"></span>
     <span class="pill" id="clock">--:--</span>
+    <button class="tb vbtn" id="bItens">📋 Itens do dia</button>
     <button class="tb" id="bSom">🔔 Som ligado</button>
     <a class="tb" href="index.html" target="_blank" style="text-decoration:none">🍽️ Abrir cardápio</a>
     <button class="tb" id="bTeste" style="display:none">🧪 Pedido de teste</button>
@@ -123,6 +142,12 @@ a.tb{color:var(--tx)}
   <div class="cols" id="cols"></div>
   <div class="fins"><details id="finD"><summary id="finS">Finalizados hoje (0)</summary><div id="fin"></div></details></div>
 </section>
+<section id="itens">
+  <div class="ih"><input id="iBusca" placeholder="🔎 Buscar item (ex.: x-salada)"><button class="tb" id="iTudo">✅ Liberar tudo</button><button class="tb" id="iVolta">← Voltar aos pedidos</button></div>
+  <div class="inf">Toque para marcar um item como <b>Esgotado</b>: ele aparece como "Esgotado hoje" no cardápio de todos os clientes na hora. Toque de novo para liberar. Itens desativados na planilha aparecem em cinza.</div>
+  <div id="iLista"><div class="vazio">Carregando itens…</div></div>
+</section>
+<div class="salvo" id="salvo">✔ Cardápio atualizado</div>
 <div id="rc"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -162,6 +187,7 @@ const DB = (() => {
     firebase.initializeApp(FIREBASE_CONFIG);
     const fs = firebase.firestore();
     const col = fs.collection("lojas").doc(LOJA_ID).collection("pedidos");
+    const dispDoc = fs.collection("lojas").doc(LOJA_ID).collection("config").doc("disponibilidade");
     return {
       modo: "online",
       async criar(p) { const ref = col.doc(); await ref.set({ ...p, id: ref.id }); return ref.id; },
@@ -170,21 +196,24 @@ const DB = (() => {
       status(id, st) { return col.doc(id).update({ status: st, ["hist." + st]: Date.now() }); },
       entrar(email, senha) { return firebase.auth().signInWithEmailAndPassword(email, senha); },
       sair() { return firebase.auth().signOut(); },
-      logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); }
+      logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); },
+      ouvirOff(cb) { return dispDoc.onSnapshot(s => cb((s.exists && s.data().off) || {}), () => cb({})); },
+      salvarOff(off) { return dispDoc.set({ off, atualizado: Date.now() }); }
     };
   }
   /* Firebase configurado mas a biblioteca não carregou (sem internet ou bloqueio): não finge que enviou */
   if (FIREBASE_CONFIG) {
     const falha = async () => { throw new Error("Firebase indisponível"); };
     return { modo: "offline", criar: falha, status: falha, entrar: falha, sair: async () => {},
-      ouvir(id, cb) { cb(null); return () => {}; }, ouvirHoje(cb, erro) { erro && erro(); return () => {}; }, logado(cb) { cb(false); return () => {}; } };
+      ouvir(id, cb) { cb(null); return () => {}; }, ouvirHoje(cb, erro) { erro && erro(); return () => {}; }, logado(cb) { cb(false); return () => {}; },
+      ouvirOff(cb) { cb({}); return () => {}; }, salvarOff: falha };
   }
   /* ---------- MODO DEMONSTRAÇÃO (localStorage + abas) ---------- */
   const K = "demo_pedidos_" + LOJA_ID, ls = window.localStorage;
   const ler = () => { try { return JSON.parse(ls.getItem(K) || "[]"); } catch (e) { return []; } };
   const subs = new Set(), avisa = () => subs.forEach(f => f());
   let bc = null; try { bc = new BroadcastChannel(K); bc.onmessage = avisa; } catch (e) {}
-  addEventListener("storage", e => { if (e.key === K) avisa(); });
+  addEventListener("storage", e => { if (e.key === K || e.key === K + "_off") avisa(); });
   const grava = a => { try { ls.setItem(K, JSON.stringify(a.slice(-200))); } catch (e) {} bc && bc.postMessage(1); avisa(); };
   const sub = f => { subs.add(f); f(); return () => subs.delete(f); };
   return {
@@ -196,6 +225,8 @@ const DB = (() => {
     async entrar(email, senha) { if (senha !== "1234") throw new Error("Senha incorreta"); ls.setItem(K + "_login", email || "demo"); },
     async sair() { ls.removeItem(K + "_login"); },
     logado(cb) { cb(!!ls.getItem(K + "_login"), ls.getItem(K + "_login")); return () => {}; },
+    ouvirOff(cb) { return sub(() => { let o = {}; try { o = JSON.parse(ls.getItem(K + "_off") || "{}"); } catch (e) {} cb(o); }); },
+    async salvarOff(off) { try { ls.setItem(K + "_off", JSON.stringify(off)); } catch (e) {} bc && bc.postMessage(1); avisa(); },
     limpar() { grava([]); }
   };
 })();
@@ -230,6 +261,7 @@ function iniciar(){ $("#login").style.display="none"; $("#app").style.display="b
   $("#modoP").className="pill "+(DB.modo==="demo"?"demo":"on"); $("#modoP").textContent=DB.modo==="demo"?"🧪 Demonstração":"🟢 Online";
   $("#bTeste").style.display=DB.modo==="demo"?"":"none";
   if("Notification" in window&&Notification.permission==="default") try{Notification.requestPermission()}catch(e){}
+  ligaOff();
   OFF&&OFF(); OFF=DB.ouvirHoje(lista=>{ const antes=new Set(PED.map(p=>p.id)); PED=lista.sort((a,b)=>a.criado-b.criado);
     PED.filter(p=>!antes.has(p.id)&&p.status==="recebido"&&antes.size).forEach(p=>{ if(document.hidden&&"Notification" in window&&Notification.permission==="granted") try{ new Notification(`Novo pedido #${p.num}`,{body:`${p.cliente.nome} · ${R(p.total)}`,icon:"icone.png"}); }catch(e){} });
     desenha(); alarmeChk(); }, ()=>{ $("#lerr").textContent="Sem permissão para ver os pedidos desta loja."; }); }
@@ -262,6 +294,37 @@ function desenha(){ const at=PED.filter(p=>COLS.some(c=>c[0]===p.status)), fin=P
 setInterval(()=>{ $("#clock").textContent=new Date().toLocaleTimeString("pt-BR",{timeZone:"America/Manaus",hour:"2-digit",minute:"2-digit"}); if(PED.length) desenha(); },20000);
 $("#clock").textContent=new Date().toLocaleTimeString("pt-BR",{timeZone:"America/Manaus",hour:"2-digit",minute:"2-digit"});
 
+/* ---------- itens do dia ---------- */
+const CATALOGO={"sheet": "1WRMh3rAQj7KKO_EVlaOwY7OVgSP1YMIXIqMamfIIKcI", "abas": {"cardapio": "Cardapio", "promocoes": "Promocoes"}};
+let CAT=[], OFFP={}, OFFoff=null, VIEW="pedidos";
+const nk=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase().replace(/\s+/g,"_");
+const sim=v=>["sim","s","yes","y","true","1","x","ok","verdadeiro"].includes(nk(v))||v===""||v==null;
+function csv(t){ const rows=[];let row=[],f="",q=false; for(let i=0;i<t.length;i++){const c=t[i]; if(q){ if(c=='"'){ if(t[i+1]=='"'){f+='"';i++;} else q=false; } else f+=c; }
+  else if(c=='"') q=true; else if(c==','){row.push(f);f="";} else if(c=='\n'||c=='\r'){ if(c=='\r'&&t[i+1]=='\n') i++; row.push(f);rows.push(row);row=[];f=""; } else f+=c; }
+  if(f!==""||row.length){row.push(f);rows.push(row);} if(!rows.length) return []; const h=rows[0].map(nk);
+  return rows.slice(1).filter(r=>r.some(x=>String(x).trim())).map(r=>Object.fromEntries(h.map((k,i)=>[k,(r[i]??"").trim()]))); }
+const pk=(o,...k)=>{ for(const x of k){ if(o[x]) return o[x]; } return ""; };
+async function aba(n){ const r=await fetch(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(CATALOGO.sheet)}/gviz/tq?tqx=out:csv&headers=1&sheet=${encodeURIComponent(n)}&t=${Date.now()}`,{cache:"no-store"});
+  const t=await r.text(); if(!r.ok||/^\s*</.test(t)) throw 0; return csv(t); }
+async function carregaCatalogo(){ try{
+    if(CATALOGO.itens){ CAT=CATALOGO.itens; }
+    else { const [m,pr]=await Promise.all([aba(CATALOGO.abas.cardapio),aba(CATALOGO.abas.promocoes).catch(()=>[])]);
+      CAT=[...pr.filter(r=>pk(r,"titulo","nome")).map(r=>({cat:"🔥 Promoções",nome:pk(r,"titulo","nome"),preco:pk(r,"preco","valor"),key:"promo:"+pk(r,"titulo","nome"),planilha:sim(pk(r,"ativa","ativo"))})),
+           ...m.filter(r=>pk(r,"item","nome","produto")).map(r=>{ const c=pk(r,"categoria")||"Outros", n=pk(r,"item","nome","produto"); return {cat:c,nome:n,preco:pk(r,"preco","valor"),key:c+"|"+n,planilha:sim(pk(r,"disponivel"))}; })]; }
+  }catch(e){ $("#iLista").innerHTML=`<div class="vazio">Não consegui ler a lista de itens. Verifique a internet e se a planilha está compartilhada.</div>`; return; }
+  desenhaItens(); }
+function desenhaItens(){ const q=nk($("#iBusca").value), grupos={}, ordem=[];
+  CAT.filter(i=>!q||nk(i.nome).includes(q)||nk(i.cat).includes(q)).forEach(i=>{ if(!grupos[i.cat]){grupos[i.cat]=[];ordem.push(i.cat);} grupos[i.cat].push(i); });
+  const nOff=CAT.filter(i=>OFFP[i.key]).length; $("#bItens").textContent=nOff?`📋 Itens do dia (${nOff} esgotado${nOff>1?"s":""})`:"📋 Itens do dia";
+  $("#iLista").innerHTML=ordem.map(c=>`<div class="grp"><h3>${esc(c)}<small>${grupos[c].filter(i=>OFFP[i.key]).length?grupos[c].filter(i=>OFFP[i.key]).length+" esgotado(s)":"tudo disponível"}</small></h3>${grupos[c].map(i=>{ const off=!!OFFP[i.key];
+    return `<div class="ir${off||!i.planilha?" off":""}"><div class="nm"><b>${esc(i.nome)}</b><small>${esc(i.preco?("R$ "+i.preco):"")}</small></div>${!i.planilha?`<button class="sw pl" disabled>Desativado na planilha</button>`:`<button class="sw ${off?"off":"on"}" data-tg="${esc(i.key)}">${off?"⛔ Esgotado":"✅ Disponível"}</button>`}</div>`; }).join("")}</div>`).join("")||`<div class="vazio">Nenhum item encontrado.</div>`; }
+async function salvaOff(novo){ try{ await DB.salvarOff(novo); const s=$("#salvo"); s.classList.add("on"); clearTimeout(s._t); s._t=setTimeout(()=>s.classList.remove("on"),1600); }catch(e){ alert("Não foi possível salvar. Verifique a internet."); } }
+function mostra(v){ VIEW=v; $("#itens").style.display=v==="itens"?"block":"none"; $$(".kpis,.tabs,.cols,.fins").forEach(e=>e.style.display=v==="itens"?"none":""); $("#bItens").classList.toggle("on",v==="itens"); if(v==="itens"&&!CAT.length) carregaCatalogo(); }
+$("#bItens").onclick=()=>mostra(VIEW==="itens"?"pedidos":"itens"); $("#iVolta").onclick=()=>mostra("pedidos");
+$("#iBusca").oninput=desenhaItens;
+$("#iTudo").onclick=()=>{ if(confirm("Marcar TODOS os itens como disponíveis?")) salvaOff({}); };
+function ligaOff(){ OFFoff&&OFFoff(); OFFoff=DB.ouvirOff(o=>{ OFFP=o||{}; if(CAT.length) desenhaItens(); else { const n=Object.keys(OFFP).length; $("#bItens").textContent=n?`📋 Itens do dia (${n} esgotado${n>1?"s":""})`:"📋 Itens do dia"; } }); }
+
 /* ---------- ações ---------- */
 function imprimir(p){ $("#rc").innerHTML=`<h3>Lanche Conexão Sabor</h3><div class="c">Pedido #${esc(p.num)} · ${hm(p.criado)}</div><div class="c"><b>${p.modo==="entrega"?"ENTREGA":p.modo==="mesa"?"MESA "+esc(p.mesa||""):"BALCÃO"}</b></div><hr>
   ${p.itens.map(i=>`<div class="r"><b>${i.q}x ${esc(i.n)}</b><span>${R(i.p*i.q)}</span></div>${(i.det||[]).map(d=>`<div>&nbsp; ${esc(d)}</div>`).join("")}`).join("")}<hr>
@@ -271,6 +334,7 @@ function imprimir(p){ $("#rc").innerHTML=`<h3>Lanche Conexão Sabor</h3><div cla
   window.print(); }
 document.addEventListener("click",async e=>{ const b=e.target.closest("button"); if(!b) return; const d=b.dataset;
   if(d.aba){ ABA=d.aba; desenha(); return; }
+  if(d.tg){ const n={...OFFP}; if(n[d.tg]) delete n[d.tg]; else n[d.tg]=true; OFFP=n; desenhaItens(); salvaOff(n); return; }
   if(d.pr){ const p=PED.find(x=>x.id===d.pr); p&&imprimir(p); return; }
   if(d.st){ if(d.st==="cancelado"&&!confirm("Cancelar este pedido? O cliente verá o pedido como cancelado.")) return;
     b.disabled=true; try{ await DB.status(d.id,d.st); if(d.st==="preparo"){ const p=PED.find(x=>x.id===d.id); if(p&&!p._imp){ p._imp=1; } } }catch(err){ alert("Não foi possível atualizar. Verifique a internet."); b.disabled=false; } return; }
