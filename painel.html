@@ -119,7 +119,7 @@ a.tb{color:var(--tx)}
   <h1 class="L">Painel de pedidos</h1><p>Lanche Conexão Sabor</p>
   <div class="lerr" id="lerr"></div>
   <input id="lEmail" type="email" placeholder="E-mail" autocomplete="username">
-  <input id="lSenha" type="password" placeholder="Senha" autocomplete="current-password">
+  <input id="lSenha" type="password" placeholder="Senha" autocomplete="current-password"><label style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;font-size:15px;cursor:pointer"><input type="checkbox" id="lManter" checked style="width:20px;height:20px;margin:0;padding:0"> Manter conectado</label>
   <button class="big" id="bEntrar">Entrar e ativar alertas 🔔</button>
   <div class="demo" id="demoInfo">🧪 <b>Modo demonstração</b><br>Use qualquer e-mail e a senha <b>1234</b>.<br>Abra o cardápio em outra aba deste mesmo navegador e faça um pedido: ele aparece aqui na hora.</div>
 </div></section>
@@ -200,7 +200,7 @@ const DB = (() => {
       ouvir(id, cb) { return col.doc(id).onSnapshot(s => cb(s.exists ? s.data() : null), () => cb(null)); },
       ouvirHoje(cb, erro) { return col.where("dia", "==", hojeISO()).onSnapshot(q => cb(q.docs.map(d => d.data())), erro); },
       status(id, st) { return col.doc(id).update({ status: st, ["hist." + st]: Date.now() }); },
-      entrar(email, senha) { return firebase.auth().signInWithEmailAndPassword(email, senha); },
+      async entrar(email, senha) { const A=firebase.auth(); const m=document.getElementById("lManter"); await A.setPersistence((!m||m.checked)?firebase.auth.Auth.Persistence.LOCAL:firebase.auth.Auth.Persistence.SESSION); const r=await A.signInWithEmailAndPassword(email, senha); try{ if(window.PasswordCredential&&(!m||m.checked)) navigator.credentials.store(new PasswordCredential({id:email,password:senha})); }catch(e){} return r; },
       sair() { return firebase.auth().signOut(); },
       logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); },
       ouvirOff(cb) { return dispDoc.onSnapshot(s => cb((s.exists && s.data().off) || {}, s.exists ? s.data().aberto : undefined), () => cb({})); },
