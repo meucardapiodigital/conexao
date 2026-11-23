@@ -36,6 +36,11 @@ input{font:inherit}
 .pill.on{color:#bbf7d0;border-color:rgba(34,197,94,.5)}
 .tb{padding:8px 12px;border-radius:12px;font-size:13px;font-weight:700;border:1px solid var(--ln);background:#1d0c0f}
 .tb:hover{border-color:var(--y)}
+.loja-status{min-height:44px;color:#fff;white-space:nowrap}
+.loja-status.aberto{background:#15643a;border-color:#36a56b}
+.loja-status.fechado{background:#a22232;border-color:#e55263}
+.loja-status:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.loja-status:disabled{cursor:wait}
 a.tb{color:var(--tx)}
 #clock{font-variant-numeric:tabular-nums;font-weight:800;color:var(--y2)}
 .kpis{display:flex;gap:10px;padding:12px 16px;flex-wrap:wrap}
@@ -125,7 +130,7 @@ a.tb{color:var(--tx)}
     <span class="sp"></span>
     <span class="pill" id="modoP"></span>
     <span class="pill" id="clock">--:--</span>
-    <select class="tb" id="bAberto" aria-label="Funcionamento da loja" disabled><option value="" disabled>Conforme a planilha</option><option value="aberto">Aberto</option><option value="fechado">Fechado</option></select>
+    <button class="tb loja-status" type="button" id="bAberto" disabled>Verificando funcionamento…</button>
     <button class="tb vbtn" id="bItens">📋 Itens do dia</button>
     <button class="tb" id="bSom">🔔 Som ligado</button>
     <a class="tb" href="index.html" target="_blank" style="text-decoration:none">🍽️ Abrir cardápio</a>
@@ -327,15 +332,48 @@ function mostra(v){ VIEW=v; $("#itens").style.display=v==="itens"?"block":"none"
 $("#bItens").onclick=()=>mostra(VIEW==="itens"?"pedidos":"itens"); $("#iVolta").onclick=()=>mostra("pedidos");
 $("#iBusca").oninput=desenhaItens;
 $("#iTudo").onclick=()=>{ if(confirm("Marcar TODOS os itens como disponíveis?")) salvaOff({}); };
-let abertoPainel;
+let abertoPainel, abertoPlanilha, salvandoFuncionamento = false;
 const bAberto = $("#bAberto");
-bAberto.onchange = async () => {
-  bAberto.disabled = true;
-  try { await DB.salvarAberto(bAberto.value === "aberto"); }
-  catch (e) { bAberto.value = abertoPainel; alert("Não foi possível atualizar o funcionamento da loja."); }
-  finally { bAberto.disabled = false; }
+function mostraFuncionamento(){
+  const aberto = abertoPainel ?? abertoPlanilha;
+  bAberto.classList.toggle("aberto", aberto === true);
+  bAberto.classList.toggle("fechado", aberto === false);
+  bAberto.disabled = aberto === undefined || salvandoFuncionamento;
+  bAberto.textContent = aberto === undefined ? "Verificando funcionamento…" :
+    aberto ? "Aberto · Fechar loja" : "Fechado · Abrir loja";
+  bAberto.setAttribute("aria-busy", String(salvandoFuncionamento));
+}
+bAberto.onclick = async () => {
+  const atual = abertoPainel ?? abertoPlanilha;
+  if(atual === undefined || salvandoFuncionamento) return;
+  salvandoFuncionamento = true;
+  mostraFuncionamento();
+  try { await DB.salvarAberto(!atual); abertoPainel = !atual; }
+  catch (e) { alert("Não foi possível atualizar o funcionamento da loja."); }
+  finally { salvandoFuncionamento = false; mostraFuncionamento(); }
 };
-function ligaOff(){ OFFoff&&OFFoff(); OFFoff=DB.ouvirOff((o, aberto)=>{ abertoPainel = typeof aberto === "boolean" ? (aberto ? "aberto" : "fechado") : ""; bAberto.value = abertoPainel; bAberto.disabled = false; OFFP=o||{}; if(CAT.length) desenhaItens(); else { const n=Object.keys(OFFP).length; $("#bItens").textContent=n?`📋 Itens do dia (${n} esgotado${n>1?"s":""})`:"📋 Itens do dia"; } }); }
+function ligaOff(){
+  OFFoff&&OFFoff();
+  OFFoff=DB.ouvirOff((o, aberto)=>{
+    abertoPainel = typeof aberto === "boolean" ? aberto : undefined;
+    mostraFuncionamento();
+    if(abertoPainel === undefined && abertoPlanilha === undefined){
+      aba("Config").then(rows=>{
+        abertoPlanilha = sim(rows.find(row=>nk(pk(row,"campo","chave"))==="aberto")?.valor);
+        mostraFuncionamento();
+      }).catch(()=>{
+        abertoPlanilha = true;
+        mostraFuncionamento();
+      });
+    }
+    OFFP=o||{};
+    if(CAT.length) desenhaItens();
+    else {
+      const n=Object.keys(OFFP).length;
+      $("#bItens").textContent=n?`📋 Itens do dia (${n} esgotado${n>1?"s":""})`:"📋 Itens do dia";
+    }
+  });
+}
 
 /* ---------- ações ---------- */
 function imprimir(p){ $("#rc").innerHTML=`<h3>Lanche Conexão Sabor</h3><div class="c">Pedido #${esc(p.num)} · ${hm(p.criado)}</div><div class="c"><b>${p.modo==="entrega"?"ENTREGA":p.modo==="mesa"?"MESA "+esc(p.mesa||""):"BALCÃO"}</b></div><hr>
