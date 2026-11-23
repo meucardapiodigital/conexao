@@ -836,7 +836,7 @@ const closeSheet=()=>{ $("#sheet").classList.remove("show"); $("#sheetBg").class
 
 function marcaErro(el){ el.classList.remove("err"); void el.offsetWidth; el.classList.add("err"); el.focus(); return false; }
 function fmtTel(n){ const d=n.startsWith("55")&&n.length>=12?n.slice(2):n; return d.length===11?`(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`:d.length===10?`(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`:n; }
-function mensagemPedido(p) {
+function abrirWhatsApp(p){ const zap=(WHATS[0]||""); if(!zap) return; location.href="https://wa.me/"+zap+"?text="+encodeURIComponent(mensagemPedido(p)); } function mensagemPedido(p) {
   const tipo = p.end ? "Entrega" : p.modo === "mesa" ? "Mesa " + p.mesa : "Retirada no balcão";
   return [
     `Olá, Conexão Sabor! Pedido #${p.num} · ${tipo}`,
@@ -882,7 +882,7 @@ async function enviar(){
     itens:ids.map(k=>({n:ITEMS[k].nome, det:[], q:CART[k], p:ITEMS[k].preco})),
     subtotal:sub, taxa:typeof tx==="number"?tx:0, taxaCombinar:tx==="combinar", total:sub+(typeof tx==="number"?tx:0), pag:PAG, troco:PAG==="Dinheiro"?troco:"", obs };
   const bt=$("[data-send]"); bt.disabled=true; bt.lastElementChild.textContent="Enviando…";
-  try{ const id=await DB.criar(ped); lsSet("cs_pedido",{id,num:ped.num,whatsapp:true}); CART={}; refreshSteppers(); updateCart(); closeSheet(); $("#obs").value=""; acompanhar(id,true); }
+  try{ const id=await DB.criar(ped); lsSet("cs_pedido",{id,num:ped.num,whatsapp:true}); CART={}; refreshSteppers(); updateCart(); closeSheet(); $("#obs").value=""; acompanhar(id,true); abrirWhatsApp(ped); }
   catch(e){ alertBox("Não foi possível enviar agora. Verifique a internet e tente de novo."); }
   finally{ bt.disabled=false; bt.lastElementChild.textContent="Preparar pedido para o WhatsApp"; }
 }
