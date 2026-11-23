@@ -428,7 +428,7 @@ nav.cats{box-shadow:0 10px 24px rgba(0,0,0,.45)}
     </div>
     
     <div id="sendBox"></div>
-    <p class="muted" style="text-align:center;margin-top:10px">O pedido vai direto para a cozinha e você acompanha o preparo por aqui.</p>
+    <p class="muted" style="text-align:center;margin-top:10px">Abra o WhatsApp para enviar o pedido ao lanche. Você acompanha o preparo por aqui.</p>
   </div>
 </div>
 
@@ -482,8 +482,9 @@ const DB = (() => {
       entrar(email, senha) { return firebase.auth().signInWithEmailAndPassword(email, senha); },
       sair() { return firebase.auth().signOut(); },
       logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); },
-      ouvirOff(cb) { return dispDoc.onSnapshot(s => cb((s.exists && s.data().off) || {}), () => cb({})); },
-      salvarOff(off) { return dispDoc.set({ off, atualizado: Date.now() }); }
+      ouvirOff(cb) { return dispDoc.onSnapshot(s => cb((s.exists && s.data().off) || {}, s.exists ? s.data().aberto : undefined), () => cb({})); },
+      salvarOff(off) { return dispDoc.set({ off, atualizado: Date.now() }, { mergeFields: ["off", "atualizado"] }); },
+      salvarAberto(aberto) { return dispDoc.set({ aberto }, { merge: true }); }
     };
   }
   /* Firebase configurado mas a biblioteca não carregou (sem internet ou bloqueio): não finge que enviou */
@@ -491,14 +492,14 @@ const DB = (() => {
     const falha = async () => { throw new Error("Firebase indisponível"); };
     return { modo: "offline", criar: falha, status: falha, entrar: falha, sair: async () => {},
       ouvir(id, cb) { cb(null); return () => {}; }, ouvirHoje(cb, erro) { erro && erro(); return () => {}; }, logado(cb) { cb(false); return () => {}; },
-      ouvirOff(cb) { cb({}); return () => {}; }, salvarOff: falha };
+      ouvirOff(cb) { cb({}); return () => {}; }, salvarOff: falha, salvarAberto: falha };
   }
   /* ---------- MODO DEMONSTRAÇÃO (localStorage + abas) ---------- */
   const K = "demo_pedidos_" + LOJA_ID, ls = window.localStorage;
   const ler = () => { try { return JSON.parse(ls.getItem(K) || "[]"); } catch (e) { return []; } };
   const subs = new Set(), avisa = () => subs.forEach(f => f());
   let bc = null; try { bc = new BroadcastChannel(K); bc.onmessage = avisa; } catch (e) {}
-  addEventListener("storage", e => { if (e.key === K || e.key === K + "_off") avisa(); });
+  addEventListener("storage", e => { if (e.key === K || e.key === K + "_off" || e.key === K + "_aberto") avisa(); });
   const grava = a => { try { ls.setItem(K, JSON.stringify(a.slice(-200))); } catch (e) {} bc && bc.postMessage(1); avisa(); };
   const sub = f => { subs.add(f); f(); return () => subs.delete(f); };
   return {
@@ -510,7 +511,8 @@ const DB = (() => {
     async entrar(email, senha) { if (senha !== "1234") throw new Error("Senha incorreta"); ls.setItem(K + "_login", email || "demo"); },
     async sair() { ls.removeItem(K + "_login"); },
     logado(cb) { cb(!!ls.getItem(K + "_login"), ls.getItem(K + "_login")); return () => {}; },
-    ouvirOff(cb) { return sub(() => { let o = {}; try { o = JSON.parse(ls.getItem(K + "_off") || "{}"); } catch (e) {} cb(o); }); },
+    ouvirOff(cb) { return sub(() => { let o = {}; try { o = JSON.parse(ls.getItem(K + "_off") || "{}"); } catch (e) {} cb(o, JSON.parse(ls.getItem(K + "_aberto") || "null")); }); },
+    async salvarAberto(aberto) { ls.setItem(K + "_aberto", JSON.stringify(aberto)); bc && bc.postMessage(1); avisa(); },
     async salvarOff(off) { try { ls.setItem(K + "_off", JSON.stringify(off)); } catch (e) {} bc && bc.postMessage(1); avisa(); },
     limpar() { grava([]); }
   };
@@ -622,20 +624,22 @@ async function load(first){
 /* ================= Render ================= */
 let lastSig="";
 /* ===== Disponibilidade do dia (controlada pelo painel) ===== */
-let OFF={}, RAWD=null, RAWO={};
+let OFF={}, RAWD=null, RAWO={}, abertoPainel;
 function aplicaOff(d){ if(!d) return d; const c=JSON.parse(JSON.stringify(d));
+  if(typeof abertoPainel==="boolean") c.config={...c.config, aberto:abertoPainel?"SIM":"NÃO"};
   c.cardapio=(c.cardapio||[]).map(it=>OFF[it.categoria+"|"+it.item]?{...it,disponivel:"NÃO"}:it);
   c.promocoes=(c.promocoes||[]).map(p=>OFF["promo:"+p.titulo]?{...p,ativa:"NÃO"}:p); return c; }
 function render(d,o){ RAWD=d; RAWO=o||{}; render0(aplicaOff(d),RAWO); }
-DB.ouvirOff(off=>{ OFF=off||{}; if(!RAWD) return; render(RAWD,{...RAWO,padrao:false});
+DB.ouvirOff((off, aberto)=>{ OFF=off||{}; abertoPainel=aberto; if(!RAWD) return; render(RAWD,{...RAWO,padrao:false});
   Object.keys(CART).forEach(k=>{ if(OFF[k.replace(/^item:/,"")]||OFF[k]) delete CART[k]; }); refreshSteppers(); updateCart(); });
 function render0(d,{padrao,offline}){
   const sig=JSON.stringify(d); if(sig===lastSig&&!padrao) return; // nada mudou
   const primeira=!lastSig; lastSig=sig; DATA=d;
   const c=d.config||{};
   const aberto=c.aberto===undefined||c.aberto===""?true:isYes(c.aberto);
-  WHATS=[c.whatsapp,c.whatsapp2,c.whatsapp_2].join(",").split(/[,;\/]/).map(n=>n.replace(/\D/g,"")).filter(n=>n.length>=10).filter((n,i,a)=>a.indexOf(n)===i);
-  $("#sendBox").innerHTML=`<button class="send" data-send="1"><span style="font-size:22px">🍔</span><span>Enviar pedido</span></button>`;
+  WHATS=[c.whatsapp,c.whatsapp2,c.whatsapp_2].join(",").split(/[,;\/]/).map(n=>n.replace(/\D/g,"")).map(n=>n.length===10||n.length===11?"55"+n:n).filter(n=>/^55\d{10,11}$/.test(n)).filter((n,i,a)=>a.indexOf(n)===i);
+  if(TRK) desenhaTrk();
+  $("#sendBox").innerHTML=`<button class="send" data-send="1"><span style="font-size:22px">🍔</span><span>Preparar pedido para o WhatsApp</span></button>`;
   CAN_ORDER=aberto;
   document.body.classList.toggle("natal",c.tema_natal===undefined||c.tema_natal===""?false:isYes(c.tema_natal));
   if(primeira) setupNatal();
@@ -832,6 +836,23 @@ const closeSheet=()=>{ $("#sheet").classList.remove("show"); $("#sheetBg").class
 
 function marcaErro(el){ el.classList.remove("err"); void el.offsetWidth; el.classList.add("err"); el.focus(); return false; }
 function fmtTel(n){ const d=n.startsWith("55")&&n.length>=12?n.slice(2):n; return d.length===11?`(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`:d.length===10?`(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`:n; }
+function mensagemPedido(p) {
+  const tipo = p.end ? "Entrega" : p.modo === "mesa" ? "Mesa " + p.mesa : "Retirada no balcão";
+  return [
+    `Olá, Conexão Sabor! Pedido #${p.num} · ${tipo}`,
+    `Cliente: ${p.cliente.nome}`,
+    p.cliente.tel && `Telefone: ${p.cliente.tel}`,
+    ...p.itens.map(i => `${i.q}x ${i.n} — ${brl(i.q*i.p)}`),
+    p.end && `Endereço: ${p.end.rua} — ${p.end.bairro}`,
+    p.end?.ref && `Referência: ${p.end.ref}`,
+    p.end?.loc,
+    p.end && (p.taxaCombinar ? "Taxa de entrega a combinar" : `Entrega: ${brl(p.taxa)}`),
+    `Total: ${brl(p.total)}${p.taxaCombinar ? " + taxa de entrega" : ""}`,
+    `Pagamento: ${p.pag}`,
+    p.troco && `Troco para: ${p.troco}`,
+    p.obs && `Observações: ${p.obs}`
+  ].filter(Boolean).join("\n");
+}
 async function enviar(){
   if(!Object.keys(CART).length) return;
   const usandoResumo=$("#perfilForm").style.display==="none";
@@ -848,6 +869,7 @@ async function enviar(){
   if(MODO==="entrega"&&txChk===null&&$("#pBairro").value==="__outro"){ $("#geoBtn").scrollIntoView({behavior:"smooth",block:"center"}); return marcaErro($("#geoBtn")); }
   if(txChk==="fora"){ alertBox("Seu endereço está fora da nossa área de entrega. Você pode escolher retirar no balcão."); return; }
   if(!PAG){ $("#pag").scrollIntoView({behavior:"smooth",block:"center"}); $$("#pag .opt").forEach(b=>marcaErro(b)); return; }
+  if(!WHATS.length){ alertBox("O WhatsApp do lanche está indisponível. Tente novamente mais tarde."); return; }
   if(!CAN_ORDER){ alertBox("Estamos fechados agora. Tente novamente no horário de funcionamento."); return; }
   if(MODO!=="mesa"&&!usandoResumo&&$("#pSalvar").checked){ PERFIL={...PERFIL,...p}; const g=geoAtual(); if(g){ PERFIL.lat=g.lat; PERFIL.lng=g.lng; } if(MODO!=="entrega"){ PERFIL.bairro=PERFIL.bairro||""; } lsSet("cs_perfil",PERFIL); }
   if(MODO==="mesa"&&p.nome&&!PERFIL.nome){ PERFIL.nome=p.nome; lsSet("cs_perfil",PERFIL); }
@@ -860,9 +882,9 @@ async function enviar(){
     itens:ids.map(k=>({n:ITEMS[k].nome, det:[], q:CART[k], p:ITEMS[k].preco})),
     subtotal:sub, taxa:typeof tx==="number"?tx:0, taxaCombinar:tx==="combinar", total:sub+(typeof tx==="number"?tx:0), pag:PAG, troco:PAG==="Dinheiro"?troco:"", obs };
   const bt=$("[data-send]"); bt.disabled=true; bt.lastElementChild.textContent="Enviando…";
-  try{ const id=await DB.criar(ped); lsSet("cs_pedido",{id,num:ped.num}); CART={}; refreshSteppers(); updateCart(); closeSheet(); $("#obs").value=""; acompanhar(id,true); }
+  try{ const id=await DB.criar(ped); lsSet("cs_pedido",{id,num:ped.num,whatsapp:true}); CART={}; refreshSteppers(); updateCart(); closeSheet(); $("#obs").value=""; acompanhar(id,true); }
   catch(e){ alertBox("Não foi possível enviar agora. Verifique a internet e tente de novo."); }
-  finally{ bt.disabled=false; bt.lastElementChild.textContent="Enviar pedido"; }
+  finally{ bt.disabled=false; bt.lastElementChild.textContent="Preparar pedido para o WhatsApp"; }
 }
 function alertBox(t){ const n=document.createElement("div"); n.className="notice"; n.textContent=t; $("#sendBox").before(n); setTimeout(()=>n.remove(),5000); }
 
@@ -881,12 +903,16 @@ function desenhaTrk(){ const p=TRK, bt=$("#trkBtn"); if(!p){ bt.classList.remove
   bt.classList.toggle("show",!fim); bt.classList.toggle("ok",p.status!=="recebido"); $("#trkBtnT").textContent=`${st.i} Pedido #${p.num} · ${lab(p.status)}`;
   $("#trkT").textContent=`Pedido #${p.num}`;
   const zap=(WHATS[0]||"");
-  $("#trkB").innerHTML=`<div class="trkh ${p.status}"><span class="ic">${st.i}</span><div><b>${lab(p.status)}</b><small>${sub(p.status)}</small></div></div>
+  const salvo = lsGet("cs_pedido");
+  const peloWhats = salvo?.id === p.id && salvo.whatsapp;
+  const prontoParaEnviar = zap && peloWhats && p.status === "recebido";
+  $("#trkB").innerHTML=`<div class="trkh ${p.status}"><span class="ic">${st.i}</span><div><b>${prontoParaEnviar?"Pedido registrado":lab(p.status)}</b><small>${prontoParaEnviar?"Abra o WhatsApp e toque em Enviar na conversa do lanche.":sub(p.status)}</small></div></div>
    ${p.status==="cancelado"?"":`<ol class="steps">${et.map((k,i)=>`<li class="${i<at?"done":i===at?"cur":""}"><span class="b">${i<at?"✓":STATUS[k].i}</span><span class="tx"><b>${lab(k)}</b><small>${p.hist&&p.hist[k]?hm(p.hist[k]):i===at+1&&!fim?"aguardando…":""}</small></span></li>`).join("")}</ol>`}
    ${!fim?`<div class="notice">⏱️ Esta tela atualiza sozinha. Pode deixar aberta.</div>`:""}
    <div class="trkr"><b>Resumo${p.modo==="mesa"?` · Mesa ${esc(p.mesa)}`:""}</b>${p.itens.map(i=>`<div><span>${i.q}x ${esc(i.n)}</span><span>${brl(i.p*i.q)}</span></div>`).join("")}
     ${p.taxa?`<div><span>Entrega</span><span>${brl(p.taxa)}</span></div>`:""}<div class="t"><span>Total</span><span>${brl(p.total)}${p.taxaCombinar?" + taxa":""}</span></div><small>💳 ${esc(p.pag)}${p.end?` · 🛵 ${esc(p.end.bairro)}`:p.modo==="mesa"?" · 🍽️ Mesa":" · 🏪 Balcão"}</small></div>
-   ${zap?`<a class="trk-zap" target="_blank" href="https://wa.me/${zap}?text=${encodeURIComponent(`Olá! Sobre o meu pedido #${p.num} (${p.cliente.nome}).`)}">💬 Falar com o lanche no WhatsApp</a>`:""}
+   ${prontoParaEnviar?`<a class="trk-zap" target="_blank" rel="noopener" href="https://wa.me/${zap}?text=${encodeURIComponent(mensagemPedido(p))}">Enviar pedido pelo WhatsApp</a>`:""}
+   ${zap&&!prontoParaEnviar?`<a class="trk-zap" target="_blank" rel="noopener" href="https://wa.me/${zap}?text=${encodeURIComponent(`Olá! Sobre o meu pedido #${p.num} (${p.cliente.nome}).`)}">💬 Falar com o lanche no WhatsApp</a>`:""}
    ${fim?`<button class="trk-zap" id="trkFim" style="width:100%;margin-top:8px">Fazer um novo pedido</button>`:""}`; }
 $("#trkBtn").onclick=abreTrk; $("#trkBg").onclick=fechaTrk; $("#trkX").onclick=fechaTrk;
 document.addEventListener("click",e=>{ if(e.target.id==="trkFim"){ lsSet("cs_pedido",null); TRKoff&&TRKoff(); TRK=null; desenhaTrk(); fechaTrk(); } });

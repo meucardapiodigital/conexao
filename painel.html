@@ -125,6 +125,7 @@ a.tb{color:var(--tx)}
     <span class="sp"></span>
     <span class="pill" id="modoP"></span>
     <span class="pill" id="clock">--:--</span>
+    <select class="tb" id="bAberto" aria-label="Funcionamento da loja" disabled><option value="" disabled>Conforme a planilha</option><option value="aberto">Aberto</option><option value="fechado">Fechado</option></select>
     <button class="tb vbtn" id="bItens">📋 Itens do dia</button>
     <button class="tb" id="bSom">🔔 Som ligado</button>
     <a class="tb" href="index.html" target="_blank" style="text-decoration:none">🍽️ Abrir cardápio</a>
@@ -197,8 +198,9 @@ const DB = (() => {
       entrar(email, senha) { return firebase.auth().signInWithEmailAndPassword(email, senha); },
       sair() { return firebase.auth().signOut(); },
       logado(cb) { return firebase.auth().onAuthStateChanged(u => cb(!!u, u && u.email)); },
-      ouvirOff(cb) { return dispDoc.onSnapshot(s => cb((s.exists && s.data().off) || {}), () => cb({})); },
-      salvarOff(off) { return dispDoc.set({ off, atualizado: Date.now() }); }
+      ouvirOff(cb) { return dispDoc.onSnapshot(s => cb((s.exists && s.data().off) || {}, s.exists ? s.data().aberto : undefined), () => cb({})); },
+      salvarOff(off) { return dispDoc.set({ off, atualizado: Date.now() }, { mergeFields: ["off", "atualizado"] }); },
+      salvarAberto(aberto) { return dispDoc.set({ aberto }, { merge: true }); }
     };
   }
   /* Firebase configurado mas a biblioteca não carregou (sem internet ou bloqueio): não finge que enviou */
@@ -206,14 +208,14 @@ const DB = (() => {
     const falha = async () => { throw new Error("Firebase indisponível"); };
     return { modo: "offline", criar: falha, status: falha, entrar: falha, sair: async () => {},
       ouvir(id, cb) { cb(null); return () => {}; }, ouvirHoje(cb, erro) { erro && erro(); return () => {}; }, logado(cb) { cb(false); return () => {}; },
-      ouvirOff(cb) { cb({}); return () => {}; }, salvarOff: falha };
+      ouvirOff(cb) { cb({}); return () => {}; }, salvarOff: falha, salvarAberto: falha };
   }
   /* ---------- MODO DEMONSTRAÇÃO (localStorage + abas) ---------- */
   const K = "demo_pedidos_" + LOJA_ID, ls = window.localStorage;
   const ler = () => { try { return JSON.parse(ls.getItem(K) || "[]"); } catch (e) { return []; } };
   const subs = new Set(), avisa = () => subs.forEach(f => f());
   let bc = null; try { bc = new BroadcastChannel(K); bc.onmessage = avisa; } catch (e) {}
-  addEventListener("storage", e => { if (e.key === K || e.key === K + "_off") avisa(); });
+  addEventListener("storage", e => { if (e.key === K || e.key === K + "_off" || e.key === K + "_aberto") avisa(); });
   const grava = a => { try { ls.setItem(K, JSON.stringify(a.slice(-200))); } catch (e) {} bc && bc.postMessage(1); avisa(); };
   const sub = f => { subs.add(f); f(); return () => subs.delete(f); };
   return {
@@ -225,7 +227,8 @@ const DB = (() => {
     async entrar(email, senha) { if (senha !== "1234") throw new Error("Senha incorreta"); ls.setItem(K + "_login", email || "demo"); },
     async sair() { ls.removeItem(K + "_login"); },
     logado(cb) { cb(!!ls.getItem(K + "_login"), ls.getItem(K + "_login")); return () => {}; },
-    ouvirOff(cb) { return sub(() => { let o = {}; try { o = JSON.parse(ls.getItem(K + "_off") || "{}"); } catch (e) {} cb(o); }); },
+    ouvirOff(cb) { return sub(() => { let o = {}; try { o = JSON.parse(ls.getItem(K + "_off") || "{}"); } catch (e) {} cb(o, JSON.parse(ls.getItem(K + "_aberto") || "null")); }); },
+    async salvarAberto(aberto) { ls.setItem(K + "_aberto", JSON.stringify(aberto)); bc && bc.postMessage(1); avisa(); },
     async salvarOff(off) { try { ls.setItem(K + "_off", JSON.stringify(off)); } catch (e) {} bc && bc.postMessage(1); avisa(); },
     limpar() { grava([]); }
   };
@@ -262,9 +265,10 @@ function iniciar(){ $("#login").style.display="none"; $("#app").style.display="b
   $("#bTeste").style.display=DB.modo==="demo"?"":"none";
   if("Notification" in window&&Notification.permission==="default") try{Notification.requestPermission()}catch(e){}
   ligaOff();
+  let primeiraLista = true;
   OFF&&OFF(); OFF=DB.ouvirHoje(lista=>{ const antes=new Set(PED.map(p=>p.id)); PED=lista.sort((a,b)=>a.criado-b.criado);
-    PED.filter(p=>!antes.has(p.id)&&p.status==="recebido"&&antes.size).forEach(p=>{ if(document.hidden&&"Notification" in window&&Notification.permission==="granted") try{ new Notification(`Novo pedido #${p.num}`,{body:`${p.cliente.nome} · ${R(p.total)}`,icon:"icone.png"}); }catch(e){} });
-    desenha(); alarmeChk(); }, ()=>{ $("#lerr").textContent="Sem permissão para ver os pedidos desta loja."; }); }
+    PED.filter(p=>!antes.has(p.id)&&p.status==="recebido"&&!primeiraLista).forEach(p=>{ if(document.hidden&&"Notification" in window&&Notification.permission==="granted") try{ new Notification(`Novo pedido #${p.num}`,{body:`${p.cliente.nome} · ${R(p.total)}`,icon:"icone.png"}); }catch(e){} });
+    primeiraLista = false; desenha(); alarmeChk(); }, ()=>{ $("#lerr").textContent="Sem permissão para ver os pedidos desta loja."; }); }
 DB.logado(ok=>{ if(ok) iniciar(); });
 $("#bSair").onclick=async()=>{ await DB.sair(); location.reload(); };
 $("#bSom").onclick=()=>{ SOM=!SOM; ac(); $("#bSom").textContent=SOM?"🔔 Som ligado":"🔕 Som desligado"; if(SOM) toque(); };
@@ -323,7 +327,15 @@ function mostra(v){ VIEW=v; $("#itens").style.display=v==="itens"?"block":"none"
 $("#bItens").onclick=()=>mostra(VIEW==="itens"?"pedidos":"itens"); $("#iVolta").onclick=()=>mostra("pedidos");
 $("#iBusca").oninput=desenhaItens;
 $("#iTudo").onclick=()=>{ if(confirm("Marcar TODOS os itens como disponíveis?")) salvaOff({}); };
-function ligaOff(){ OFFoff&&OFFoff(); OFFoff=DB.ouvirOff(o=>{ OFFP=o||{}; if(CAT.length) desenhaItens(); else { const n=Object.keys(OFFP).length; $("#bItens").textContent=n?`📋 Itens do dia (${n} esgotado${n>1?"s":""})`:"📋 Itens do dia"; } }); }
+let abertoPainel;
+const bAberto = $("#bAberto");
+bAberto.onchange = async () => {
+  bAberto.disabled = true;
+  try { await DB.salvarAberto(bAberto.value === "aberto"); }
+  catch (e) { bAberto.value = abertoPainel; alert("Não foi possível atualizar o funcionamento da loja."); }
+  finally { bAberto.disabled = false; }
+};
+function ligaOff(){ OFFoff&&OFFoff(); OFFoff=DB.ouvirOff((o, aberto)=>{ abertoPainel = typeof aberto === "boolean" ? (aberto ? "aberto" : "fechado") : ""; bAberto.value = abertoPainel; bAberto.disabled = false; OFFP=o||{}; if(CAT.length) desenhaItens(); else { const n=Object.keys(OFFP).length; $("#bItens").textContent=n?`📋 Itens do dia (${n} esgotado${n>1?"s":""})`:"📋 Itens do dia"; } }); }
 
 /* ---------- ações ---------- */
 function imprimir(p){ $("#rc").innerHTML=`<h3>Lanche Conexão Sabor</h3><div class="c">Pedido #${esc(p.num)} · ${hm(p.criado)}</div><div class="c"><b>${p.modo==="entrega"?"ENTREGA":p.modo==="mesa"?"MESA "+esc(p.mesa||""):"BALCÃO"}</b></div><hr>
