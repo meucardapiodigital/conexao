@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "meucardapiodigital-ce935"
+  },
+  "targets": {
+    "meucardapiodigital-ce935": {
+      "hosting": {
+        "cardapiopro": [
+          "cardapiopro-ce935"
+        ]
+      }
+    }
+  }
+}

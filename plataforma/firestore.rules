@@ -1,38 +1,77 @@
 rules_version = '2';
 service cloud.firestore {
- match /databases/{database}/documents {
-  function signedIn(){return request.auth != null;}
-  function superadmin(){return signedIn() && exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));}
-  function member(rid){return signedIn() && exists(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(request.auth.uid));}
-  function role(rid){return get(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(request.auth.uid)).data.papel;}
-  function manager(rid){return member(rid) && role(rid) in ['proprietario','gerente'];}
-  match /superadmins/{uid} {
-   allow read: if signedIn() && request.auth.uid == uid;
-   allow write: if false;
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function superadmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));
+    }
+
+    function memberRole(rid, roles) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(request.auth.uid)).data.papel in roles;
+    }
+
+    function staff(rid) {
+      return superadmin() || memberRole(rid, ['proprietario', 'gerente', 'atendente']);
+    }
+
+    function manager(rid) {
+      return superadmin() || memberRole(rid, ['proprietario', 'gerente']);
+    }
+
+    function activeStore(rid) {
+      return get(/databases/$(database)/documents/restaurantes/$(rid)).data.status == 'ativo';
+    }
+
+    function validCategory(data) {
+      return data.keys().hasOnly(['nome', 'ordem']) &&
+        data.nome is string && data.nome.size() > 0 && data.nome.size() <= 100 &&
+        data.ordem is int && data.ordem >= 0 && data.ordem <= 10000;
+    }
+
+    function validProduct(rid, data) {
+      return data.keys().hasOnly(['nome', 'descricao', 'precoCentavos', 'categoriaId', 'ativo']) &&
+        data.nome is string && data.nome.size() > 0 && data.nome.size() <= 150 &&
+        data.get('descricao', '') is string && data.get('descricao', '').size() <= 500 &&
+        data.precoCentavos is int && data.precoCentavos >= 0 && data.precoCentavos <= 1000000 &&
+        data.ativo is bool &&
+        data.categoriaId is string && data.categoriaId.matches('^[A-Za-z0-9_-]{1,128}$') &&
+        exists(/databases/$(database)/documents/restaurantes/$(rid)/categorias/$(data.categoriaId));
+    }
+
+    match /superadmins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /restaurantes/{rid} {
+      allow get: if resource.data.status == 'ativo' || staff(rid);
+      allow list: if superadmin();
+
+      match /membros/{uid} {
+        allow get: if superadmin() || (signedIn() && request.auth.uid == uid);
+      }
+
+      match /categorias/{id} {
+        allow read: if activeStore(rid) || staff(rid);
+        allow create, update: if manager(rid) && validCategory(request.resource.data);
+      }
+
+      match /produtos/{id} {
+        allow read: if staff(rid) || (activeStore(rid) && resource.data.ativo == true);
+        allow create, update: if manager(rid) && validProduct(rid, request.resource.data);
+      }
+
+      match /pedidos/{id} {
+        allow read: if staff(rid);
+      }
+    }
+
+    match /slugs/{slug} {
+      allow get: if true;
+    }
   }
-  match /restaurantes/{rid} {
-   allow get,list: if resource.data.status == 'ativo' || member(rid) || superadmin();
-   allow write: if false;
-   match /membros/{uid} {
-    allow read: if superadmin() || (signedIn() && request.auth.uid == uid);
-    allow write: if false;
-   }
-   match /categorias/{id} {
-    allow read: if true;
-    allow write: if manager(rid);
-   }
-   match /produtos/{id} {
-    allow read: if true;
-    allow write: if manager(rid);
-   }
-   match /pedidos/{id} {
-    allow read: if member(rid) || superadmin();
-    allow write: if false;
-   }
-  }
-  match /slugs/{slug} {
-   allow read: if true;
-   allow write: if false;
-  }
- }
 }
