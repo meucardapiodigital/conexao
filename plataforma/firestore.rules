@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function signedIn(){return request.auth != null;}
+  function superadmin(){return signedIn() && exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));}
+  function member(rid){return signedIn() && exists(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(request.auth.uid));}
+  function role(rid){return get(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(request.auth.uid)).data.papel;}
+  function manager(rid){return member(rid) && role(rid) in ['proprietario','gerente'];}
+  match /superadmins/{uid} {
+   allow read: if signedIn() && request.auth.uid == uid;
+   allow write: if false;
+  }
+  match /restaurantes/{rid} {
+   allow get,list: if resource.data.status == 'ativo' || member(rid) || superadmin();
+   allow write: if false;
+   match /membros/{uid} {
+    allow read: if superadmin() || (signedIn() && request.auth.uid == uid);
+    allow write: if false;
+   }
+   match /categorias/{id} {
+    allow read: if true;
+    allow write: if manager(rid);
+   }
+   match /produtos/{id} {
+    allow read: if true;
+    allow write: if manager(rid);
+   }
+   match /pedidos/{id} {
+    allow read: if member(rid) || superadmin();
+    allow write: if false;
+   }
+  }
+  match /slugs/{slug} {
+   allow read: if true;
+   allow write: if false;
+  }
+ }
+}
