@@ -1,10 +1,4 @@
 {
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "default"
-    }
-  ],
   "hosting": {
     "public": "dist",
     "ignore": [

@@ -1,8 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
-import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 
 const env = import.meta.env;
 const emulators = env.DEV && env.VITE_FIREBASE_EMULATORS === "true";
@@ -20,17 +18,7 @@ const app = initializeApp({
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const fn = getFunctions(app, "southamerica-east1");
-export const checkoutReady = emulators || Boolean(ready &&
-  env.VITE_FIREBASE_APP_ID && env.VITE_FIREBASE_APP_CHECK_SITE_KEY);
-
 if (emulators) {
   connectAuthEmulator(auth, "http://127.0.0.1:9099");
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
-  connectFunctionsEmulator(fn, "127.0.0.1", 5001);
-} else if (checkoutReady) {
-  initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(env.VITE_FIREBASE_APP_CHECK_SITE_KEY),
-    isTokenAutoRefreshEnabled: true
-  });
 }
