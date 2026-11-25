@@ -1,0 +1,24 @@
+{
+  "name": "cardapio-pro",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test test/emulators.mjs"
+  },
+  "dependencies": {
+    "firebase": "^11.6.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.5.0"
+  },
+  "devDependencies": {
+    "firebase-admin": "^14.5.1",
+    "vite": "^6.3.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.13.6"
+  }
+}

@@ -1,0 +1,178 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function superadmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/superadmins/$(request.auth.uid));
+    }
+
+    function memberRole(rid, roles) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(request.auth.uid)).data.papel in roles;
+    }
+
+    function staff(rid) {
+      return superadmin() || memberRole(rid, ['proprietario', 'gerente', 'atendente']);
+    }
+
+    function manager(rid) {
+      return superadmin() || memberRole(rid, ['proprietario', 'gerente']);
+    }
+
+    function activeStore(rid) {
+      return get(/databases/$(database)/documents/restaurantes/$(rid)).data.status == 'ativo';
+    }
+
+    function validCategory(data) {
+      return data.keys().hasOnly(['nome', 'ordem']) &&
+        data.nome is string && data.nome.size() > 0 && data.nome.size() <= 100 &&
+        data.ordem is int && data.ordem >= 0 && data.ordem <= 10000;
+    }
+
+    function validProduct(rid, data) {
+      return data.keys().hasOnly(['nome', 'descricao', 'precoCentavos', 'categoriaId', 'ativo']) &&
+        data.nome is string && data.nome.size() > 0 && data.nome.size() <= 150 &&
+        data.get('descricao', '') is string && data.get('descricao', '').size() <= 500 &&
+        data.precoCentavos is int && data.precoCentavos >= 0 && data.precoCentavos <= 1000000 &&
+        data.ativo is bool &&
+        data.categoriaId is string && data.categoriaId.matches('^[A-Za-z0-9_-]{1,128}$') &&
+        exists(/databases/$(database)/documents/restaurantes/$(rid)/categorias/$(data.categoriaId));
+    }
+
+    function validTheme(data) {
+      return data.tema is map && data.tema.keys().hasOnly(['cor']) &&
+        data.tema.cor is string && data.tema.cor.matches('^#[0-9a-fA-F]{6}$') &&
+        data.taxaEntregaCentavos is int &&
+        data.taxaEntregaCentavos >= 0 && data.taxaEntregaCentavos <= 100000;
+    }
+
+    function validLine(rid, line) {
+      let p = get(/databases/$(database)/documents/restaurantes/$(rid)/produtos/$(line.id)).data;
+      return line.keys().hasOnly(['id', 'nome', 'quantidade', 'precoCentavos', 'totalCentavos']) &&
+        p.ativo == true && line.nome == p.nome && line.precoCentavos is int &&
+        line.precoCentavos >= 0 && line.precoCentavos <= 1000000 &&
+        line.precoCentavos == p.precoCentavos && line.quantidade is int &&
+        line.quantidade >= 1 && line.quantidade <= 50 &&
+        line.totalCentavos == line.precoCentavos * line.quantidade;
+    }
+
+    function lineTotal(lines, index) {
+      return lines.size() > index ? lines[index].totalCentavos : 0;
+    }
+
+    function validOrder(rid, id, data) {
+      let lines = data.itens;
+      let store = get(/databases/$(database)/documents/restaurantes/$(rid)).data;
+      let limit = getAfter(/databases/$(database)/documents/limitesPedidosCardapioPro/$(request.auth.uid)).data;
+      return data.keys().hasOnly(['uid', 'cliente', 'itens', 'modalidade', 'pagamento',
+          'subtotalCentavos', 'taxaEntregaCentavos', 'totalCentavos', 'status', 'criadoEm']) &&
+        store.status == 'ativo' && data.uid == request.auth.uid &&
+        limit.restauranteId == rid && limit.pedidoId == id && limit.criadoEm == request.time &&
+        data.criadoEm == request.time && data.status == 'recebido' &&
+        data.modalidade in ['entrega', 'retirada', 'mesa'] &&
+        data.pagamento in ['pix', 'dinheiro', 'cartao'] &&
+        data.cliente.keys().hasOnly(['nome', 'telefone', 'endereco']) &&
+        data.cliente.nome is string && data.cliente.nome.size() >= 2 && data.cliente.nome.size() <= 150 &&
+        data.cliente.telefone is string && data.cliente.telefone.matches('^[+0-9 ()-]{10,24}$') &&
+        data.cliente.telefone.matches('^([^0-9]*[0-9]){10,}[^0-9]*$') &&
+        data.cliente.endereco is string && data.cliente.endereco.size() <= 250 &&
+        (data.modalidade == 'entrega' ? data.cliente.endereco.size() > 0 : data.cliente.endereco == '') &&
+        lines is list && lines.size() >= 1 && lines.size() <= 5 &&
+        validLine(rid, lines[0]) &&
+        (lines.size() < 2 || validLine(rid, lines[1])) &&
+        (lines.size() < 3 || validLine(rid, lines[2])) &&
+        (lines.size() < 4 || validLine(rid, lines[3])) &&
+        (lines.size() < 5 || validLine(rid, lines[4])) &&
+        data.subtotalCentavos == lineTotal(lines, 0) + lineTotal(lines, 1) +
+          lineTotal(lines, 2) + lineTotal(lines, 3) + lineTotal(lines, 4) &&
+        data.subtotalCentavos <= 100000000 &&
+        data.taxaEntregaCentavos == (data.modalidade == 'entrega' ? store.taxaEntregaCentavos : 0) &&
+        data.totalCentavos == data.subtotalCentavos + data.taxaEntregaCentavos;
+    }
+
+    function validTransition(from, to) {
+      return (from == 'recebido' && to in ['preparando', 'cancelado']) ||
+        (from == 'preparando' && to in ['pronto', 'cancelado']) ||
+        (from == 'pronto' && to in ['entrega', 'concluido']) ||
+        (from == 'entrega' && to == 'concluido');
+    }
+
+    match /superadmins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /restaurantes/{rid} {
+      allow get: if resource.data.status == 'ativo' || staff(rid);
+      allow list: if superadmin();
+      allow create: if superadmin() &&
+        request.resource.data.keys().hasOnly(['nome', 'slug', 'status', 'tema', 'taxaEntregaCentavos', 'criadoEm']) &&
+        request.resource.data.nome is string && request.resource.data.nome.size() >= 3 &&
+        request.resource.data.nome.size() <= 150 &&
+        request.resource.data.slug is string && request.resource.data.slug.size() >= 3 &&
+        request.resource.data.slug.size() <= 80 &&
+        request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$') &&
+        request.resource.data.status == 'ativo' && request.resource.data.criadoEm == request.time &&
+        validTheme(request.resource.data) &&
+        getAfter(/databases/$(database)/documents/slugs/$(request.resource.data.slug)).data.restauranteId == rid;
+      allow update: if manager(rid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tema', 'taxaEntregaCentavos']) &&
+        validTheme(request.resource.data);
+
+      match /membros/{uid} {
+        allow get: if superadmin() || (signedIn() && request.auth.uid == uid);
+        allow create: if superadmin() &&
+          request.resource.data.keys().hasOnly(['papel']) &&
+          request.resource.data.papel == 'proprietario' &&
+          existsAfter(/databases/$(database)/documents/restaurantes/$(rid));
+      }
+
+      match /categorias/{id} {
+        allow read: if activeStore(rid) || staff(rid);
+        allow create, update: if manager(rid) && validCategory(request.resource.data);
+      }
+
+      match /produtos/{id} {
+        allow read: if staff(rid) || (activeStore(rid) && resource.data.ativo == true);
+        allow create, update: if manager(rid) && validProduct(rid, request.resource.data);
+      }
+
+      match /pedidos/{id} {
+        allow read: if staff(rid);
+        allow create: if signedIn() && validOrder(rid, id, request.resource.data);
+        allow update: if staff(rid) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+          validTransition(resource.data.status, request.resource.data.status);
+      }
+    }
+
+    match /slugs/{slug} {
+      allow get: if true;
+      allow create: if superadmin() && request.resource.data.keys().hasOnly(['restauranteId']) &&
+        getAfter(/databases/$(database)/documents/restaurantes/$(request.resource.data.restauranteId)).data.slug == slug;
+    }
+
+    match /acessosCardapioPro/{uid}/restaurantes/{rid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if superadmin() && request.resource.data.keys().hasOnly(['restauranteId']) &&
+        request.resource.data.restauranteId == rid &&
+        existsAfter(/databases/$(database)/documents/restaurantes/$(rid)/membros/$(uid));
+    }
+
+    match /limitesPedidosCardapioPro/{uid} {
+      function recordsNewOrder(data) {
+        let path = /databases/$(database)/documents/restaurantes/$(data.restauranteId)/pedidos/$(data.pedidoId);
+        return request.auth.uid == uid && data.keys().hasOnly(['restauranteId', 'pedidoId', 'criadoEm']) &&
+          data.criadoEm == request.time && !exists(path) && getAfter(path).data.uid == uid;
+      }
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && recordsNewOrder(request.resource.data);
+      allow update: if signedIn() && request.time >= resource.data.criadoEm + duration.value(1, 'm') &&
+        recordsNewOrder(request.resource.data);
+    }
+  }
+}
